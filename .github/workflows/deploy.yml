@@ -14,15 +14,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: mapa-metodos/package-lock.json
+
       - run: npm ci
+        working-directory: mapa-metodos
+
       - run: npm run build
+        working-directory: mapa-metodos
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: mapa-metodos/dist
 
   deploy:
     needs: build
