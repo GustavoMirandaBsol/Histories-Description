@@ -1,0 +1,9 @@
+{
+  "name": "proyectos-utilitarios",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix \"mapa-metodos\" run dev",
+    "build": "npm --prefix \"mapa-metodos\" run build",
+    "preview": "npm --prefix \"mapa-metodos\" run preview"
+  }
+}
