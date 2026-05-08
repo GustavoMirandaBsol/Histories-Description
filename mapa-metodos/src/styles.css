@@ -370,6 +370,14 @@ h4 {
   color: var(--accent-dark);
 }
 
+.sync-hint {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  margin-top: 5px;
+  max-width: 360px;
+}
+
 .collaborator-form {
   display: grid;
   gap: 8px;

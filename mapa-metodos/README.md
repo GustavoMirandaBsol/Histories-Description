@@ -30,6 +30,10 @@ Para GitHub Pages, agrega estos secrets en el repositorio:
 
 Después de configurar Supabase, usa `Copiar enlace colaborativo` y envía ese enlace a los colaboradores. Quien abra ese enlace verá el mismo flujo y los cambios se sincronizarán.
 
+Agregar un correo en `Colaboradores` registra quién participa en el proyecto, pero no envía invitaciones ni autentica usuarios todavía. Para que otra persona vea tus cambios debe abrir el enlace colaborativo del proyecto.
+
+Si Realtime por WebSocket falla en alguna red corporativa, la app usa sincronización periódica con Supabase como respaldo.
+
 Nota: el esquema incluido permite lectura/escritura pública para facilitar el prototipo colaborativo. Para producción conviene agregar autenticación y políticas RLS por usuario.
 
 ## Ejecutar

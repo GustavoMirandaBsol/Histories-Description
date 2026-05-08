@@ -253,6 +253,7 @@ export default function App() {
   const initialSharedProjectId = useMemo(getSharedProjectIdFromUrl, []);
   const applyingRemoteUpdateRef = useRef(false);
   const saveTimerRef = useRef(null);
+  const lastRemoteSnapshotRef = useRef("");
   const [projects, setProjects] = useState(initialState.projects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialState.selectedProjectId);
   const [selectedMethodId, setSelectedMethodId] = useState(initialState.selectedMethodId);
@@ -359,24 +360,53 @@ export default function App() {
   useEffect(() => {
     if (!cloudSyncEnabled || !selectedProjectId) return;
 
+    let cancelled = false;
+    const applySharedProject = (sharedProject, message) => {
+      const normalizedProject = normalizeProject(sharedProject);
+      if (!normalizedProject) return;
+
+      const nextSnapshot = JSON.stringify(normalizedProject);
+      if (nextSnapshot === lastRemoteSnapshotRef.current) return;
+      lastRemoteSnapshotRef.current = nextSnapshot;
+
+      applyingRemoteUpdateRef.current = true;
+      replaceOrInsertProject(normalizedProject);
+      setSyncStatus("Actualizado");
+      setSyncMessage(message);
+    };
+
     const unsubscribe = subscribeToSharedProject(
       selectedProjectId,
       (sharedProject) => {
-        const normalizedProject = normalizeProject(sharedProject);
-        if (!normalizedProject) return;
-
-        applyingRemoteUpdateRef.current = true;
-        replaceOrInsertProject(normalizedProject);
-        setSyncStatus("Actualizado");
-        setSyncMessage("Se recibió un cambio de otro navegador o colaborador.");
+        applySharedProject(sharedProject, "Se recibió un cambio de otro navegador o colaborador.");
       },
       (error) => {
         setSyncStatus("Error de realtime");
-        setSyncMessage(error.message);
+        setSyncMessage(`${error.message}. Se usará sincronización periódica como respaldo.`);
       }
     );
 
-    return unsubscribe;
+    const pullLatestProject = () => {
+      loadSharedProject(selectedProjectId)
+        .then((sharedProject) => {
+          if (cancelled || !sharedProject) return;
+          applySharedProject(sharedProject, "Se actualizó el flujo desde Supabase.");
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setSyncStatus("Error de sincronización");
+          setSyncMessage(error.message);
+        });
+    };
+
+    pullLatestProject();
+    const pollingId = window.setInterval(pullLatestProject, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollingId);
+      unsubscribe();
+    };
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -405,6 +435,7 @@ export default function App() {
     saveTimerRef.current = window.setTimeout(() => {
       saveSharedProject(selectedProject)
         .then(() => {
+          lastRemoteSnapshotRef.current = JSON.stringify(selectedProject);
           setSyncStatus("Sincronizado");
           setSyncMessage("Los cambios están disponibles para tus colaboradores.");
         })
@@ -942,6 +973,9 @@ export default function App() {
             <h3>{selectedProject?.collaborators.length ?? 0} correo(s)</h3>
             <p className="sync-status" data-enabled={cloudSyncEnabled ? "true" : "false"}>
               {syncStatus}: {syncMessage}
+            </p>
+            <p className="sync-hint">
+              Para colaborar, comparte el enlace del proyecto; el correo solo identifica participantes.
             </p>
           </div>
           <form className="collaborator-form" onSubmit={handleAddCollaborator}>
