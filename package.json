@@ -5,5 +5,9 @@
     "dev": "npm --prefix \"mapa-metodos\" run dev",
     "build": "npm --prefix \"mapa-metodos\" run build",
     "preview": "npm --prefix \"mapa-metodos\" run preview"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.11"
   }
 }
