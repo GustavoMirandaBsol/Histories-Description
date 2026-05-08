@@ -26,6 +26,8 @@ Para GitHub Pages, agrega estos secrets en el repositorio:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
+`VITE_SUPABASE_URL` debe ser la Project URL, por ejemplo `https://xxxxx.supabase.co`. No uses la REST URL completa con `/rest/v1`.
+
 Después de configurar Supabase, usa `Copiar enlace colaborativo` y envía ese enlace a los colaboradores. Quien abra ese enlace verá el mismo flujo y los cambios se sincronizarán.
 
 Nota: el esquema incluido permite lectura/escritura pública para facilitar el prototipo colaborativo. Para producción conviene agregar autenticación y políticas RLS por usuario.
