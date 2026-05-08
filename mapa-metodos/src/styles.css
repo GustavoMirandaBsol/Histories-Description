@@ -358,6 +358,18 @@ h4 {
   padding: 14px;
 }
 
+.sync-status {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin-top: 5px;
+  max-width: 360px;
+}
+
+.sync-status[data-enabled="true"] {
+  color: var(--accent-dark);
+}
+
 .collaborator-form {
   display: grid;
   gap: 8px;

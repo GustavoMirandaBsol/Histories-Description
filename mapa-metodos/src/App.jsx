@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  cloudSyncEnabled,
+  loadSharedProject,
+  saveSharedProject,
+  subscribeToSharedProject
+} from "./cloudSync";
 
 const STORAGE_KEY = "mapa-metodos-data-v1";
 const ROOT_VALUE = "__root__";
@@ -125,6 +131,10 @@ function normalizeProjects(projects) {
     });
 }
 
+function normalizeProject(project) {
+  return normalizeProjects([project])[0] ?? null;
+}
+
 function loadInitialState() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
@@ -228,11 +238,30 @@ function normalizeUrl(url) {
   return `https://${url}`;
 }
 
+function getSharedProjectIdFromUrl() {
+  return new URLSearchParams(window.location.search).get("project");
+}
+
+function sharedProjectUrl(projectId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("project", projectId);
+  return url.toString();
+}
+
 export default function App() {
   const initialState = useMemo(loadInitialState, []);
+  const initialSharedProjectId = useMemo(getSharedProjectIdFromUrl, []);
+  const applyingRemoteUpdateRef = useRef(false);
+  const saveTimerRef = useRef(null);
   const [projects, setProjects] = useState(initialState.projects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialState.selectedProjectId);
   const [selectedMethodId, setSelectedMethodId] = useState(initialState.selectedMethodId);
+  const [syncStatus, setSyncStatus] = useState(cloudSyncEnabled ? "Conectando" : "Modo local");
+  const [syncMessage, setSyncMessage] = useState(
+    cloudSyncEnabled
+      ? "La sincronización compartida está disponible."
+      : "Configura Supabase para ver cambios de otros colaboradores."
+  );
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -287,6 +316,70 @@ export default function App() {
   const directChildren = selectedMethod ? childrenMap.get(selectedMethod.id) ?? [] : [];
 
   useEffect(() => {
+    if (!cloudSyncEnabled) return;
+    if (!initialSharedProjectId) {
+      setSyncStatus("Listo para compartir");
+      setSyncMessage("Copia el enlace colaborativo del proyecto para que otros editen el mismo flujo.");
+      return;
+    }
+
+    let cancelled = false;
+    setSyncStatus("Cargando nube");
+    setSyncMessage("Buscando el proyecto compartido del enlace.");
+
+    loadSharedProject(initialSharedProjectId)
+      .then((sharedProject) => {
+        if (cancelled) return;
+        const normalizedProject = normalizeProject(sharedProject);
+        if (!normalizedProject) {
+          setSyncStatus("Sin datos compartidos");
+          setSyncMessage("No existe un flujo publicado para este enlace. Se creará al guardar cambios.");
+          setSelectedProjectId(initialSharedProjectId);
+          return;
+        }
+
+        applyingRemoteUpdateRef.current = true;
+        replaceOrInsertProject(normalizedProject);
+        setSelectedProjectId(normalizedProject.id);
+        setSelectedMethodId(normalizedProject.methods[0]?.id ?? null);
+        setSyncStatus("Sincronizado");
+        setSyncMessage("Este flujo ya está cargado desde la nube.");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSyncStatus("Error de nube");
+        setSyncMessage(error.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialSharedProjectId]);
+
+  useEffect(() => {
+    if (!cloudSyncEnabled || !selectedProjectId) return;
+
+    const unsubscribe = subscribeToSharedProject(
+      selectedProjectId,
+      (sharedProject) => {
+        const normalizedProject = normalizeProject(sharedProject);
+        if (!normalizedProject) return;
+
+        applyingRemoteUpdateRef.current = true;
+        replaceOrInsertProject(normalizedProject);
+        setSyncStatus("Actualizado");
+        setSyncMessage("Se recibió un cambio de otro navegador o colaborador.");
+      },
+      (error) => {
+        setSyncStatus("Error de realtime");
+        setSyncMessage(error.message);
+      }
+    );
+
+    return unsubscribe;
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
@@ -299,7 +392,30 @@ export default function App() {
     } catch {
       alert("No se pudo guardar. Reduce el tamaño o la cantidad de imágenes y vuelve a intentar.");
     }
-  }, [projects, selectedMethodId, selectedProjectId]);
+
+    if (!cloudSyncEnabled || !selectedProject) return;
+    if (applyingRemoteUpdateRef.current) {
+      applyingRemoteUpdateRef.current = false;
+      return;
+    }
+
+    window.clearTimeout(saveTimerRef.current);
+    setSyncStatus("Guardando");
+    setSyncMessage("Sincronizando cambios del proyecto seleccionado.");
+    saveTimerRef.current = window.setTimeout(() => {
+      saveSharedProject(selectedProject)
+        .then(() => {
+          setSyncStatus("Sincronizado");
+          setSyncMessage("Los cambios están disponibles para tus colaboradores.");
+        })
+        .catch((error) => {
+          setSyncStatus("Error al guardar");
+          setSyncMessage(error.message);
+        });
+    }, 450);
+
+    return () => window.clearTimeout(saveTimerRef.current);
+  }, [projects, selectedMethodId, selectedProjectId, selectedProject]);
 
   useEffect(() => {
     const activeProject = projects.find((project) => project.id === selectedProjectId) ?? null;
@@ -343,6 +459,16 @@ export default function App() {
       notes: selectedMethod.notes
     });
   }, [selectedMethod]);
+
+  function replaceOrInsertProject(project) {
+    setProjects((current) => {
+      const exists = current.some((item) => item.id === project.id);
+      if (exists) {
+        return current.map((item) => (item.id === project.id ? project : item));
+      }
+      return [project, ...current];
+    });
+  }
 
   function updateSelectedProject(updater) {
     if (!selectedProjectId) return;
@@ -408,6 +534,22 @@ export default function App() {
       ]
     }));
     setCollaboratorEmail("");
+    if (!cloudSyncEnabled) {
+      setSyncStatus("Modo local");
+      setSyncMessage("El correo quedó guardado solo en este navegador. Configura Supabase para compartir cambios.");
+    }
+  }
+
+  async function handleCopySharedLink() {
+    if (!selectedProject) return;
+
+    const url = sharedProjectUrl(selectedProject.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      setSyncMessage("Enlace colaborativo copiado. Envíalo a tus colaboradores para editar el mismo flujo.");
+    } catch {
+      prompt("Copia este enlace colaborativo:", url);
+    }
   }
 
   function handleDeleteCollaborator(collaboratorId) {
@@ -776,6 +918,14 @@ export default function App() {
           </div>
           <div className="project-actions">
             <button
+              className="ghost-button"
+              type="button"
+              onClick={handleCopySharedLink}
+              disabled={!selectedProject}
+            >
+              Copiar enlace colaborativo
+            </button>
+            <button
               className="ghost-button danger"
               type="button"
               onClick={handleDeleteProject}
@@ -790,6 +940,9 @@ export default function App() {
           <div>
             <p className="eyebrow">Colaboradores</p>
             <h3>{selectedProject?.collaborators.length ?? 0} correo(s)</h3>
+            <p className="sync-status" data-enabled={cloudSyncEnabled ? "true" : "false"}>
+              {syncStatus}: {syncMessage}
+            </p>
           </div>
           <form className="collaborator-form" onSubmit={handleAddCollaborator}>
             <input

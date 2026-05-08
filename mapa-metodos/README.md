@@ -6,6 +6,30 @@ El árbol se muestra completo. La búsqueda solo resalta coincidencias y los nod
 
 Cada proyecto puede tener colaboradores por correo. Los colaboradores se guardan junto con los métodos, links, imágenes y estados.
 
+## Colaboración en tiempo real
+
+La app funciona en dos modos:
+
+- Modo local: guarda en `localStorage`, solo visible en el navegador actual.
+- Modo compartido: usa Supabase para que varios navegadores vean y editen el mismo flujo.
+
+Para activar el modo compartido:
+
+1. Crea un proyecto en Supabase.
+2. Ejecuta el SQL de `supabase-schema.sql` en el SQL editor de Supabase.
+3. Copia `.env.example` como `.env.local` en `mapa-metodos`.
+4. Completa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+5. Reinicia `npm run dev`.
+
+Para GitHub Pages, agrega estos secrets en el repositorio:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Después de configurar Supabase, usa `Copiar enlace colaborativo` y envía ese enlace a los colaboradores. Quien abra ese enlace verá el mismo flujo y los cambios se sincronizarán.
+
+Nota: el esquema incluido permite lectura/escritura pública para facilitar el prototipo colaborativo. Para producción conviene agregar autenticación y políticas RLS por usuario.
+
 ## Ejecutar
 
 ```bash
@@ -30,12 +54,14 @@ También puedes crear cualquier método desde `Nuevo método` y elegir en `Depen
 
 ## Datos
 
-La información se guarda automáticamente en `localStorage` del navegador. Puedes exportar e importar JSON desde el panel izquierdo.
+La información se guarda automáticamente en `localStorage` del navegador y, si Supabase está configurado, también en la tabla compartida. Puedes exportar e importar JSON desde el panel izquierdo.
 
 Las imágenes se almacenan en el navegador como datos embebidos. Si agregas muchas imágenes o archivos grandes, el navegador puede limitar el guardado.
 
 ## Archivos principales
 
 - `src/App.jsx`: lógica de proyectos, métodos, submetodos, árbol, links e imágenes.
+- `src/cloudSync.js`: sincronización opcional con Supabase Realtime.
 - `src/styles.css`: diseño de la aplicación y conectores del árbol gráfico.
 - `src/main.jsx`: entrada de React.
+- `supabase-schema.sql`: tabla y políticas para colaboración compartida.
