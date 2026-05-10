@@ -280,6 +280,8 @@ export default function App() {
   const [linkTitle, setLinkTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [collaboratorEmail, setCollaboratorEmail] = useState("");
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -850,16 +852,36 @@ export default function App() {
   );
 
   return (
-    <div className="app-shell">
+    <div
+      className={[
+        "app-shell",
+        leftPanelOpen ? "" : "left-panel-collapsed",
+        rightPanelOpen ? "" : "right-panel-collapsed"
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {leftPanelOpen ? (
       <aside className="projects-panel" aria-label="Proyectos">
         <div className="panel-header">
           <div>
             <p className="eyebrow">React</p>
             <h1>Mapa de Métodos</h1>
           </div>
-          <button className="icon-button" type="button" onClick={handleExportData} title="Exportar datos">
-            ↓
-          </button>
+          <div className="panel-actions">
+            <button className="icon-button" type="button" onClick={handleExportData} title="Exportar datos">
+              ↓
+            </button>
+            <button
+              className="icon-button ghost-icon"
+              type="button"
+              onClick={() => setLeftPanelOpen(false)}
+              title="Ocultar panel de proyectos"
+              aria-label="Ocultar panel de proyectos"
+            >
+              ‹
+            </button>
+          </div>
         </div>
 
         <form className="quick-form" onSubmit={handleCreateProject}>
@@ -936,6 +958,17 @@ export default function App() {
           ))}
         </ul>
       </aside>
+      ) : (
+        <button
+          className="floating-panel-toggle left"
+          type="button"
+          onClick={() => setLeftPanelOpen(true)}
+          title="Mostrar panel de proyectos"
+          aria-label="Mostrar panel de proyectos"
+        >
+          ›
+        </button>
+      )}
 
       <main className="workspace">
         <section className="top-bar">
@@ -1019,9 +1052,18 @@ export default function App() {
                 <p className="eyebrow">Dependencias</p>
                 <h3>Árbol gráfico</h3>
               </div>
-              <button type="button" onClick={handleCreateExecuteExample} disabled={!selectedProject}>
-                Ejemplo Execute
-              </button>
+              <div className="tree-header-actions">
+                <button type="button" onClick={handleCreateExecuteExample} disabled={!selectedProject}>
+                  Ejemplo Execute
+                </button>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => setRightPanelOpen((isOpen) => !isOpen)}
+                >
+                  {rightPanelOpen ? "Ocultar detalle" : "Mostrar detalle"}
+                </button>
+              </div>
             </div>
 
             <form className="method-create-form" onSubmit={handleCreateMethod}>
@@ -1089,6 +1131,7 @@ export default function App() {
             />
           </section>
 
+          {rightPanelOpen && (
           <section className="detail-panel">
             {!selectedMethod && (
               <div className="detail-empty">
@@ -1109,9 +1152,20 @@ export default function App() {
                     </p>
                     <h3>{selectedMethod.name}</h3>
                   </div>
-                  <button className="icon-button danger" type="button" onClick={handleDeleteMethod} title="Eliminar método">
-                    ×
-                  </button>
+                  <div className="detail-actions">
+                    <button
+                      className="icon-button ghost-icon"
+                      type="button"
+                      onClick={() => setRightPanelOpen(false)}
+                      title="Ocultar detalle"
+                      aria-label="Ocultar detalle"
+                    >
+                      ›
+                    </button>
+                    <button className="icon-button danger" type="button" onClick={handleDeleteMethod} title="Eliminar método">
+                      ×
+                    </button>
+                  </div>
                 </header>
 
                 <form className="edit-form" onSubmit={handleSaveMethod}>
@@ -1300,6 +1354,7 @@ export default function App() {
               </article>
             )}
           </section>
+          )}
         </section>
       </main>
     </div>

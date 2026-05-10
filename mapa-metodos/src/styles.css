@@ -141,6 +141,14 @@ h4 {
   min-height: 100vh;
 }
 
+.app-shell.left-panel-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell.left-panel-collapsed .workspace {
+  grid-column: 1 / -1;
+}
+
 .projects-panel {
   background: #fbfcfd;
   border-right: 1px solid var(--line);
@@ -161,6 +169,9 @@ h4 {
 .import-row,
 .inline-action,
 .project-actions,
+.panel-actions,
+.tree-header-actions,
+.detail-actions,
 .collaborator-list li,
 .child-method-item,
 .link-item,
@@ -244,6 +255,35 @@ h4 {
 .import-row,
 .project-actions {
   gap: 8px;
+}
+
+.panel-actions,
+.tree-header-actions,
+.detail-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ghost-icon {
+  background: #ffffff;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.ghost-icon:hover {
+  background: #eef2f6;
+  border-color: #c5cfdb;
+}
+
+.floating-panel-toggle {
+  box-shadow: var(--shadow);
+  left: 12px;
+  position: fixed;
+  top: 14px;
+  z-index: 20;
 }
 
 .inline-action input {
@@ -427,6 +467,10 @@ h4 {
   gap: 18px;
   grid-template-columns: minmax(480px, 1.25fr) minmax(360px, 0.75fr);
   min-height: 0;
+}
+
+.app-shell.right-panel-collapsed .content-grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .tree-panel,
@@ -951,8 +995,15 @@ h4 {
   }
 
   .project-actions,
+  .tree-header-actions,
+  .detail-actions,
   .import-row {
     justify-content: flex-start;
+  }
+
+  .floating-panel-toggle {
+    left: 10px;
+    top: 10px;
   }
 
   .method-create-form,
