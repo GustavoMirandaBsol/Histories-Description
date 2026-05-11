@@ -32,6 +32,7 @@ jobs:
           GITHUB_PAGES: "true"
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_APP_ACCESS_CODE_HASH: ${{ secrets.VITE_APP_ACCESS_CODE_HASH }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

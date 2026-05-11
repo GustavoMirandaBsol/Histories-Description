@@ -245,6 +245,56 @@ h4 {
   width: 1px;
 }
 
+.access-page {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(29, 78, 216, 0.08)),
+    var(--bg);
+  display: flex;
+  min-height: 100vh;
+  padding: 22px;
+}
+
+.access-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 22px;
+  margin: 0 auto;
+  max-width: 420px;
+  padding: 28px;
+  width: 100%;
+}
+
+.access-card h1 {
+  font-size: 1.9rem;
+  margin-top: 6px;
+}
+
+.access-card p:not(.eyebrow):not(.access-error) {
+  color: var(--muted);
+  line-height: 1.45;
+  margin-top: 8px;
+}
+
+.access-form {
+  display: grid;
+  gap: 12px;
+}
+
+.access-error {
+  background: var(--danger-soft);
+  border: 1px solid #f5b7ae;
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.35;
+  padding: 10px 12px;
+}
+
 .quick-form,
 .search-box {
   display: grid;
