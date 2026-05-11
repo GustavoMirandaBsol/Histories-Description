@@ -48,6 +48,7 @@ function createMethod(projectId, name, parentId = null, overrides = {}) {
     status: "Pendiente",
     links: [],
     images: [],
+    position: 0,
     createdAt: nowIso(),
     updatedAt: nowIso(),
     ...overrides
@@ -59,17 +60,21 @@ function createExecuteDemoProject() {
   const execute = createMethod(projectId, "execute", null, {
     requirement: "Orquestar el flujo completo de desembolso.",
     notes: "Método principal del proceso.",
+    position: 0,
     status: "En progreso"
   });
   const initDisbursement = createMethod(projectId, "InitDisbursement", execute.id, {
     requirement: "Preparar la operación antes de consultar datos y documentos.",
+    position: 0,
     status: "En progreso"
   });
   const getClient = createMethod(projectId, "Get Client", initDisbursement.id, {
-    requirement: "Obtener y validar la información del cliente."
+    requirement: "Obtener y validar la información del cliente.",
+    position: 0
   });
   const getDocument = createMethod(projectId, "Get Document", initDisbursement.id, {
     requirement: "Recuperar los documentos necesarios para continuar.",
+    position: 1,
     status: "Completado"
   });
 
@@ -124,6 +129,7 @@ function normalizeProjects(projects) {
           status: STATUS.includes(method.status) ? method.status : "Pendiente",
           links: Array.isArray(method.links) ? method.links : [],
           images: Array.isArray(method.images) ? method.images : [],
+          position: toFiniteNumber(method.position),
           createdAt: method.createdAt ?? nowIso(),
           updatedAt: method.updatedAt ?? nowIso()
         }));
@@ -133,6 +139,8 @@ function normalizeProjects(projects) {
         ...method,
         parentId: method.parentId && methodIds.has(method.parentId) ? method.parentId : null
       }));
+
+      normalizedProject.methods = normalizeMethodPositions(normalizedProject.methods);
 
       return normalizedProject;
     });
@@ -174,8 +182,62 @@ function loadInitialState() {
   }
 }
 
-function sortByCreated(items) {
-  return [...items].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+function toFiniteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function getMethodPosition(method) {
+  return toFiniteNumber(method.position);
+}
+
+function sortByPosition(items) {
+  return [...items].sort((a, b) => {
+    const positionA = getMethodPosition(a);
+    const positionB = getMethodPosition(b);
+
+    if (positionA !== null && positionB !== null && positionA !== positionB) {
+      return positionA - positionB;
+    }
+
+    if (positionA !== null && positionB === null) return -1;
+    if (positionA === null && positionB !== null) return 1;
+
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
+function normalizeMethodPositions(methods) {
+  const siblingsMap = new Map();
+  methods.forEach((method) => {
+    const key = method.parentId ?? ROOT_VALUE;
+    if (!siblingsMap.has(key)) siblingsMap.set(key, []);
+    siblingsMap.get(key).push(method);
+  });
+
+  const positionsById = new Map();
+  siblingsMap.forEach((siblings) => {
+    sortByPosition(siblings).forEach((method, index) => {
+      positionsById.set(method.id, index);
+    });
+  });
+
+  return methods.map((method) => ({
+    ...method,
+    position: positionsById.get(method.id) ?? 0
+  }));
+}
+
+function getSiblingMethods(methods, parentId) {
+  const key = parentId ?? ROOT_VALUE;
+  return sortByPosition(methods.filter((method) => (method.parentId ?? ROOT_VALUE) === key));
+}
+
+function getNextMethodPosition(methods, parentId) {
+  const siblings = getSiblingMethods(methods, parentId);
+  if (siblings.length === 0) return 0;
+
+  return Math.max(...siblings.map((method) => getMethodPosition(method) ?? 0)) + 1;
 }
 
 function makeChildrenMap(methods) {
@@ -187,7 +249,7 @@ function makeChildrenMap(methods) {
   });
 
   map.forEach((children, key) => {
-    map.set(key, sortByCreated(children));
+    map.set(key, sortByPosition(children));
   });
 
   return map;
@@ -219,6 +281,26 @@ function getMethodPath(methods, methodId) {
   }
 
   return path;
+}
+
+function getMoveParentOptions(methods, methodId) {
+  const excludedIds = new Set([methodId, ...getDescendantIds(methods, methodId)]);
+
+  return [
+    { id: ROOT_VALUE, label: "Método principal" },
+    ...methods
+      .filter((method) => !excludedIds.has(method.id))
+      .map((method) => ({
+        id: method.id,
+        label: getMethodPath(methods, method.id)
+          .map((item) => item.name)
+          .join(" / ")
+      }))
+  ];
+}
+
+function normalizeParentValue(parentId) {
+  return parentId === ROOT_VALUE ? null : parentId;
 }
 
 function methodMatchesSearch(method, query) {
@@ -362,6 +444,7 @@ function AppContent({ onLockApp }) {
   const [collaboratorEmail, setCollaboratorEmail] = useState("");
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [draggingMethodId, setDraggingMethodId] = useState(null);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -397,6 +480,17 @@ function AppContent({ onLockApp }) {
     }));
   }, [selectedMethods, selectedProjectId]);
   const directChildren = selectedMethod ? childrenMap.get(selectedMethod.id) ?? [] : [];
+  const moveParentOptions = useMemo(
+    () => (selectedMethod ? getMoveParentOptions(selectedMethods, selectedMethod.id) : []),
+    [selectedMethod, selectedMethods]
+  );
+  const selectedSiblingMethods = useMemo(
+    () => (selectedMethod ? getSiblingMethods(selectedMethods, selectedMethod.parentId) : []),
+    [selectedMethod, selectedMethods]
+  );
+  const selectedSiblingIndex = selectedMethod
+    ? selectedSiblingMethods.findIndex((method) => method.id === selectedMethod.id)
+    : -1;
 
   useEffect(() => {
     if (!cloudSyncEnabled) return;
@@ -690,8 +784,10 @@ function AppContent({ onLockApp }) {
     const cleanName = newMethodName.trim();
     if (!cleanName) return;
 
-    const parentId = newMethodParentId === ROOT_VALUE ? null : newMethodParentId;
-    const method = createMethod(selectedProject.id, cleanName, parentId);
+    const parentId = normalizeParentValue(newMethodParentId);
+    const method = createMethod(selectedProject.id, cleanName, parentId, {
+      position: getNextMethodPosition(selectedProject.methods, parentId)
+    });
 
     updateSelectedProject((project) => ({
       ...project,
@@ -706,7 +802,9 @@ function AppContent({ onLockApp }) {
     const cleanName = name.trim();
     if (!cleanName) return;
 
-    const method = createMethod(selectedProject.id, cleanName, selectedMethod.id);
+    const method = createMethod(selectedProject.id, cleanName, selectedMethod.id, {
+      position: getNextMethodPosition(selectedProject.methods, selectedMethod.id)
+    });
     updateSelectedProject((project) => ({
       ...project,
       methods: [...project.methods, method]
@@ -719,7 +817,12 @@ function AppContent({ onLockApp }) {
     const names = bulkChildren.split(/\r?\n/).map(cleanMethodLine).filter(Boolean);
     if (names.length === 0) return;
 
-    const newMethods = names.map((name) => createMethod(selectedProject.id, name, selectedMethod.id));
+    const startPosition = getNextMethodPosition(selectedProject.methods, selectedMethod.id);
+    const newMethods = names.map((name, index) =>
+      createMethod(selectedProject.id, name, selectedMethod.id, {
+        position: startPosition + index
+      })
+    );
     updateSelectedProject((project) => ({
       ...project,
       methods: [...project.methods, ...newMethods]
@@ -734,17 +837,21 @@ function AppContent({ onLockApp }) {
     const execute = createMethod(selectedProject.id, "execute", null, {
       requirement: "Orquestar el flujo completo de desembolso.",
       notes: "Método principal del proceso.",
+      position: getNextMethodPosition(selectedProject.methods, null),
       status: "En progreso"
     });
     const init = createMethod(selectedProject.id, "InitDisbursement", execute.id, {
       requirement: "Preparar la operación antes de consultar datos y documentos.",
+      position: 0,
       status: "En progreso"
     });
     const client = createMethod(selectedProject.id, "Get Client", init.id, {
-      requirement: "Obtener y validar la información del cliente."
+      requirement: "Obtener y validar la información del cliente.",
+      position: 0
     });
     const document = createMethod(selectedProject.id, "Get Document", init.id, {
       requirement: "Recuperar los documentos necesarios para continuar.",
+      position: 1,
       status: "Completado"
     });
 
@@ -774,6 +881,93 @@ function AppContent({ onLockApp }) {
           : method
       )
     }));
+  }
+
+  function canMoveMethod(methodId, rawParentId) {
+    if (!selectedProject) return false;
+
+    const nextParentId = normalizeParentValue(rawParentId);
+    const method = selectedProject.methods.find((item) => item.id === methodId);
+    if (!method || method.id === nextParentId) return false;
+    if (nextParentId && !selectedProject.methods.some((item) => item.id === nextParentId)) return false;
+
+    return !getDescendantIds(selectedProject.methods, method.id).includes(nextParentId);
+  }
+
+  function handleMoveMethod(methodId, rawParentId) {
+    if (!selectedProject) return;
+
+    const nextParentId = normalizeParentValue(rawParentId);
+    const method = selectedProject.methods.find((item) => item.id === methodId);
+    if (!method) return;
+    if (method.parentId === nextParentId) {
+      setSelectedMethodId(method.id);
+      return;
+    }
+
+    if (!canMoveMethod(method.id, nextParentId)) {
+      alert("No puedes mover un método debajo de sí mismo o de una de sus dependencias.");
+      return;
+    }
+
+    const nextPosition = getNextMethodPosition(
+      selectedProject.methods.filter((item) => item.id !== method.id),
+      nextParentId
+    );
+
+    updateSelectedProject((project) => ({
+      ...project,
+      methods: normalizeMethodPositions(
+        project.methods.map((item) =>
+          item.id === method.id
+            ? {
+                ...item,
+                parentId: nextParentId,
+                position: nextPosition,
+                updatedAt: nowIso()
+              }
+            : item
+        )
+      )
+    }));
+    setSelectedMethodId(method.id);
+  }
+
+  function handleShiftMethod(methodId, direction) {
+    if (!selectedProject) return;
+
+    const method = selectedProject.methods.find((item) => item.id === methodId);
+    if (!method) return;
+
+    const siblings = getSiblingMethods(selectedProject.methods, method.parentId);
+    const currentIndex = siblings.findIndex((item) => item.id === method.id);
+    const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= siblings.length) return;
+
+    const reorderedSiblings = [...siblings];
+    [reorderedSiblings[currentIndex], reorderedSiblings[nextIndex]] = [
+      reorderedSiblings[nextIndex],
+      reorderedSiblings[currentIndex]
+    ];
+
+    const nextPositions = new Map(
+      reorderedSiblings.map((item, index) => [item.id, index])
+    );
+    const updatedAt = nowIso();
+
+    updateSelectedProject((project) => ({
+      ...project,
+      methods: project.methods.map((item) =>
+        nextPositions.has(item.id) && item.position !== nextPositions.get(item.id)
+          ? {
+              ...item,
+              position: nextPositions.get(item.id),
+              updatedAt
+            }
+          : item
+      )
+    }));
+    setSelectedMethodId(method.id);
   }
 
   function handleDeleteMethod() {
@@ -1212,7 +1406,12 @@ function AppContent({ onLockApp }) {
               searchMatchIds={searchMatchIds}
               searchQuery={methodSearch}
               selectedMethodId={selectedMethodId}
+              draggingMethodId={draggingMethodId}
               onSelectMethod={setSelectedMethodId}
+              onMoveMethod={handleMoveMethod}
+              onStartDragging={setDraggingMethodId}
+              onEndDragging={() => setDraggingMethodId(null)}
+              canMoveMethod={canMoveMethod}
             />
           </section>
 
@@ -1300,6 +1499,54 @@ function AppContent({ onLockApp }) {
                 <section className="asset-section">
                   <div className="section-header compact">
                     <div>
+                      <p className="eyebrow">Dependencia</p>
+                      <h4>Card padre</h4>
+                    </div>
+                  </div>
+                  <div className="move-method-form">
+                    <div>
+                      <label htmlFor="moveMethodParent">Depende de</label>
+                      <select
+                        id="moveMethodParent"
+                        value={selectedMethod.parentId ?? ROOT_VALUE}
+                        onChange={(event) => handleMoveMethod(selectedMethod.id, event.target.value)}
+                      >
+                        {moveParentOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label>Posición</label>
+                      <div className="order-button-row">
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => handleShiftMethod(selectedMethod.id, "up")}
+                          disabled={selectedSiblingIndex <= 0}
+                        >
+                          Subir
+                        </button>
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => handleShiftMethod(selectedMethod.id, "down")}
+                          disabled={
+                            selectedSiblingIndex < 0 || selectedSiblingIndex >= selectedSiblingMethods.length - 1
+                          }
+                        >
+                          Bajar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="asset-section">
+                  <div className="section-header compact">
+                    <div>
                       <p className="eyebrow">Dependencias</p>
                       <h4>Submétodos directos</h4>
                     </div>
@@ -1338,7 +1585,7 @@ function AppContent({ onLockApp }) {
                     {directChildren.length === 0 && (
                       <li className="empty-list">Aún no hay submetodos directos para este método.</li>
                     )}
-                    {directChildren.map((child) => (
+                    {directChildren.map((child, index) => (
                       <li className="child-method-item" key={child.id}>
                         <div>
                           <strong>{child.name}</strong>
@@ -1346,9 +1593,27 @@ function AppContent({ onLockApp }) {
                             {child.status}
                           </span>
                         </div>
-                        <button className="ghost-button" type="button" onClick={() => setSelectedMethodId(child.id)}>
-                          Abrir
-                        </button>
+                        <div className="child-method-actions">
+                          <button
+                            className="ghost-button"
+                            type="button"
+                            onClick={() => handleShiftMethod(child.id, "up")}
+                            disabled={index === 0}
+                          >
+                            Subir
+                          </button>
+                          <button
+                            className="ghost-button"
+                            type="button"
+                            onClick={() => handleShiftMethod(child.id, "down")}
+                            disabled={index === directChildren.length - 1}
+                          >
+                            Bajar
+                          </button>
+                          <button className="ghost-button" type="button" onClick={() => setSelectedMethodId(child.id)}>
+                            Abrir
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -1446,7 +1711,19 @@ function AppContent({ onLockApp }) {
   );
 }
 
-function TreeGraph({ rootMethods, childrenMap, searchMatchIds, searchQuery, selectedMethodId, onSelectMethod }) {
+function TreeGraph({
+  rootMethods,
+  childrenMap,
+  searchMatchIds,
+  searchQuery,
+  selectedMethodId,
+  draggingMethodId,
+  onSelectMethod,
+  onMoveMethod,
+  onStartDragging,
+  onEndDragging,
+  canMoveMethod
+}) {
   if (rootMethods.length === 0) {
     return (
       <div className="tree-empty">
@@ -1455,8 +1732,30 @@ function TreeGraph({ rootMethods, childrenMap, searchMatchIds, searchQuery, sele
     );
   }
 
+  function handleCanvasDragOver(event) {
+    const isOverNode = event.target.closest?.(".graph-node");
+    if (isOverNode || !draggingMethodId || !canMoveMethod(draggingMethodId, ROOT_VALUE)) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }
+
+  function handleCanvasDrop(event) {
+    const isOverNode = event.target.closest?.(".graph-node");
+    if (isOverNode || !draggingMethodId || !canMoveMethod(draggingMethodId, ROOT_VALUE)) return;
+
+    event.preventDefault();
+    onMoveMethod(draggingMethodId, ROOT_VALUE);
+    onEndDragging();
+  }
+
   return (
-    <div className="tree-canvas" aria-label="Árbol gráfico de dependencias">
+    <div
+      className={["tree-canvas", draggingMethodId ? "drop-root-active" : ""].filter(Boolean).join(" ")}
+      aria-label="Árbol gráfico de dependencias"
+      onDragOver={handleCanvasDragOver}
+      onDrop={handleCanvasDrop}
+    >
       {rootMethods.map((method) => (
         <TreeBranch
           key={method.id}
@@ -1465,7 +1764,12 @@ function TreeGraph({ rootMethods, childrenMap, searchMatchIds, searchQuery, sele
           searchMatchIds={searchMatchIds}
           searchQuery={searchQuery}
           selectedMethodId={selectedMethodId}
+          draggingMethodId={draggingMethodId}
           onSelectMethod={onSelectMethod}
+          onMoveMethod={onMoveMethod}
+          onStartDragging={onStartDragging}
+          onEndDragging={onEndDragging}
+          canMoveMethod={canMoveMethod}
           depth={0}
         />
       ))}
@@ -1473,10 +1777,47 @@ function TreeGraph({ rootMethods, childrenMap, searchMatchIds, searchQuery, sele
   );
 }
 
-function TreeBranch({ method, childrenMap, searchMatchIds, searchQuery, selectedMethodId, onSelectMethod, depth }) {
+function TreeBranch({
+  method,
+  childrenMap,
+  searchMatchIds,
+  searchQuery,
+  selectedMethodId,
+  draggingMethodId,
+  onSelectMethod,
+  onMoveMethod,
+  onStartDragging,
+  onEndDragging,
+  canMoveMethod,
+  depth
+}) {
   const children = childrenMap.get(method.id) ?? [];
   const isSearchActive = Boolean(searchQuery.trim());
   const isSearchMatch = searchMatchIds.has(method.id);
+  const isDragging = method.id === draggingMethodId;
+  const isDropTarget =
+    Boolean(draggingMethodId) && draggingMethodId !== method.id && canMoveMethod(draggingMethodId, method.id);
+
+  function handleDragStart(event) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", method.id);
+    onStartDragging(method.id);
+  }
+
+  function handleDragOver(event) {
+    if (!isDropTarget) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }
+
+  function handleDrop(event) {
+    if (!isDropTarget) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    onMoveMethod(draggingMethodId, method.id);
+    onEndDragging();
+  }
 
   return (
     <div className="tree-branch">
@@ -1485,13 +1826,22 @@ function TreeBranch({ method, childrenMap, searchMatchIds, searchQuery, selected
         className={[
           "graph-node",
           method.id === selectedMethodId ? "active" : "",
+          isDragging ? "dragging" : "",
+          isDropTarget ? "drop-target" : "",
           isSearchActive && isSearchMatch ? "search-match" : "",
           isSearchActive && !isSearchMatch ? "search-muted" : ""
         ]
           .filter(Boolean)
           .join(" ")}
         data-status={method.status}
+        draggable
+        title="Arrastra esta card para moverla en el árbol"
+        aria-grabbed={isDragging}
         onClick={() => onSelectMethod(method.id)}
+        onDragStart={handleDragStart}
+        onDragEnd={onEndDragging}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       >
         <span className="node-kind">{depth === 0 ? "Principal" : "Submétodo"}</span>
         <strong>{method.name}</strong>
@@ -1511,7 +1861,12 @@ function TreeBranch({ method, childrenMap, searchMatchIds, searchQuery, selected
                 searchMatchIds={searchMatchIds}
                 searchQuery={searchQuery}
                 selectedMethodId={selectedMethodId}
+                draggingMethodId={draggingMethodId}
                 onSelectMethod={onSelectMethod}
+                onMoveMethod={onMoveMethod}
+                onStartDragging={onStartDragging}
+                onEndDragging={onEndDragging}
+                canMoveMethod={canMoveMethod}
                 depth={depth + 1}
               />
             </div>
