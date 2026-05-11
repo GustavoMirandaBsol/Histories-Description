@@ -645,6 +645,11 @@ h4 {
   padding: 28px;
 }
 
+.tree-canvas.drop-root-active {
+  outline: 2px dashed rgba(15, 118, 110, 0.36);
+  outline-offset: -12px;
+}
+
 .tree-branch {
   align-items: flex-start;
   display: flex;
@@ -711,7 +716,23 @@ h4 {
   min-height: 116px;
   padding: 12px;
   text-align: left;
+  user-select: none;
   width: 230px;
+}
+
+.graph-node[draggable="true"] {
+  cursor: grab;
+}
+
+.graph-node.dragging {
+  cursor: grabbing;
+  opacity: 0.58;
+  transform: scale(0.98);
+}
+
+.graph-node.drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
 }
 
 .graph-node[data-status="Pendiente"] {
@@ -887,7 +908,8 @@ h4 {
 }
 
 .child-form,
-.link-form {
+.link-form,
+.move-method-form {
   display: grid;
   gap: 8px;
 }
@@ -896,8 +918,25 @@ h4 {
   grid-template-columns: minmax(160px, 1fr) auto;
 }
 
+.move-method-form {
+  align-items: end;
+  grid-template-columns: minmax(180px, 1fr) auto;
+}
+
 .link-form {
   grid-template-columns: minmax(110px, 0.9fr) minmax(170px, 1.15fr) auto;
+}
+
+.order-button-row,
+.child-method-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.child-method-actions {
+  flex-shrink: 0;
 }
 
 .bulk-child-box {
@@ -1060,8 +1099,14 @@ h4 {
   .edit-form,
   .collaborator-form,
   .child-form,
+  .move-method-form,
   .link-form {
     grid-template-columns: 1fr;
+  }
+
+  .order-button-row,
+  .child-method-actions {
+    justify-content: flex-start;
   }
 
   .collaborator-list {
