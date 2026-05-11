@@ -5,6 +5,13 @@ import {
   saveSharedProject,
   subscribeToSharedProject
 } from "./cloudSync";
+import {
+  accessControlEnabled,
+  clearStoredAccess,
+  hasStoredAccess,
+  rememberAccess,
+  verifyAccessCode
+} from "./accessControl";
 
 const STORAGE_KEY = "mapa-metodos-data-v1";
 const ROOT_VALUE = "__root__";
@@ -248,7 +255,80 @@ function sharedProjectUrl(projectId) {
   return url.toString();
 }
 
+function AccessGate({ onUnlock }) {
+  const [accessCode, setAccessCode] = useState("");
+  const [accessError, setAccessError] = useState("");
+  const [isCheckingAccess, setIsCheckingAccess] = useState(false);
+
+  async function handleAccessSubmit(event) {
+    event.preventDefault();
+    setAccessError("");
+    setIsCheckingAccess(true);
+
+    try {
+      const isAllowed = await verifyAccessCode(accessCode);
+      if (!isAllowed) {
+        setAccessError("Código incorrecto.");
+        return;
+      }
+
+      rememberAccess();
+      onUnlock();
+    } catch (error) {
+      setAccessError(error.message);
+    } finally {
+      setIsCheckingAccess(false);
+    }
+  }
+
+  return (
+    <main className="access-page">
+      <section className="access-card" aria-label="Acceso restringido">
+        <div>
+          <p className="eyebrow">Acceso restringido</p>
+          <h1>Mapa de Métodos</h1>
+          <p>Ingresa el código autorizado para abrir tus proyectos.</p>
+        </div>
+
+        <form className="access-form" onSubmit={handleAccessSubmit}>
+          <div>
+            <label htmlFor="accessCode">Código de acceso</label>
+            <input
+              id="accessCode"
+              type="password"
+              value={accessCode}
+              onChange={(event) => setAccessCode(event.target.value)}
+              autoComplete="current-password"
+              autoFocus
+              required
+            />
+          </div>
+          {accessError && <p className="access-error">{accessError}</p>}
+          <button type="submit" disabled={isCheckingAccess}>
+            {isCheckingAccess ? "Validando..." : "Entrar"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 export default function App() {
+  const [accessGranted, setAccessGranted] = useState(hasStoredAccess);
+
+  function handleLockApp() {
+    clearStoredAccess();
+    setAccessGranted(false);
+  }
+
+  if (!accessGranted) {
+    return <AccessGate onUnlock={() => setAccessGranted(true)} />;
+  }
+
+  return <AppContent onLockApp={handleLockApp} />;
+}
+
+function AppContent({ onLockApp }) {
   const initialState = useMemo(loadInitialState, []);
   const initialSharedProjectId = useMemo(getSharedProjectIdFromUrl, []);
   const applyingRemoteUpdateRef = useRef(false);
@@ -981,6 +1061,11 @@ export default function App() {
             </p>
           </div>
           <div className="project-actions">
+            {accessControlEnabled && (
+              <button className="ghost-button" type="button" onClick={onLockApp}>
+                Bloquear
+              </button>
+            )}
             <button
               className="ghost-button"
               type="button"

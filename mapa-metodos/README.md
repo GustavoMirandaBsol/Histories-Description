@@ -25,6 +25,7 @@ Para GitHub Pages, agrega estos secrets en el repositorio:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_APP_ACCESS_CODE_HASH` si quieres exigir código de acceso en la app
 
 `VITE_SUPABASE_URL` debe ser la Project URL, por ejemplo `https://xxxxx.supabase.co`. No uses la REST URL completa con `/rest/v1`.
 
@@ -35,6 +36,26 @@ Agregar un correo en `Colaboradores` registra quién participa en el proyecto, p
 Si Realtime por WebSocket falla en alguna red corporativa, la app usa sincronización periódica con Supabase como respaldo.
 
 Nota: el esquema incluido permite lectura/escritura pública para facilitar el prototipo colaborativo. Para producción conviene agregar autenticación y políticas RLS por usuario.
+
+## Acceso básico
+
+Puedes activar una puerta de acceso antes de cargar la app con `VITE_APP_ACCESS_CODE_HASH`.
+
+Genera el hash del código compartido con Node:
+
+```bash
+node -e "const { createHash } = require('crypto'); console.log(createHash('sha256').update(process.argv[1].trim()).digest('hex'))" "mi-codigo-seguro"
+```
+
+Luego guarda el resultado en `.env.local`:
+
+```env
+VITE_APP_ACCESS_CODE_HASH=pega_aqui_el_hash
+```
+
+En GitHub Pages, crea el secret `VITE_APP_ACCESS_CODE_HASH`. Al estar configurado, la app muestra una pantalla de acceso y permite bloquear la sesión desde el botón `Bloquear`.
+
+Esta puerta evita acceso casual a la interfaz. Para proteger de verdad los datos en Supabase, reemplaza las políticas públicas de `supabase-schema.sql` por autenticación y RLS por usuario o dominio.
 
 ## Ejecutar
 
